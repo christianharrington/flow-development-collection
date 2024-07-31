@@ -478,7 +478,21 @@ class ConfigurationManager
         if ($configurationType) {
             $configToWrite = $this->unprocessedConfiguration[$configurationType];
         }
-        file_put_contents($cachePathAndFilename, '<?php return ' . $this->replaceVariablesInPhpString(var_export($configToWrite, true)) . ';');
+
+        // Since other PHP processes might be attempting to read from the configuration file _while_ it's beeing written,
+        // we write to a temporary file initially, then swap it around.
+        $tempConfigFilePath = tempnam(sys_get_temp_dir(), 'Configurations');
+
+        if ($tempConfigFilePath === false) {
+            throw new Exception(sprintf('Could not create temporary file for configuration %s.', $cachePathAndFilename), 1722419348);
+        }
+
+        file_put_contents($tempConfigFilePath, '<?php return ' . $this->replaceVariablesInPhpString(var_export($configToWrite, true)) . ';');
+
+        if (rename($tempConfigFilePath, $cachePathAndFilename) === false) {
+            throw new Exception(sprintf('Could not move updated configuration %s from %s.', $cachePathAndFilename, $tempConfigFilePath), 1722419514);
+        }
+
         OpcodeCacheHelper::clearAllActive($cachePathAndFilename);
     }
 
